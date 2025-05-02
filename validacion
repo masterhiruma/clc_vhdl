@@ -25,3 +25,55 @@ architecture Behavioral of Autorizacion_Logica is
  constant RFID_TRAB_1 : std_logic_vector(31 downto 0) := x"2222BBBB";
  constant RFID_VISIT_1 : std_logic_vector(31 downto 0) := x"3333CCCC";
  constant RFID_NIVEL_INV : std_logic_vector(1 downto 0) := "00";
+constant RFID_NIVEL_ADMIN : std_logic_vector(1 downto 0) := "01";
+ constant RFID_NIVEL_TRAB : std_logic_vector(1 downto 0) := "10";
+ constant RFID_NIVEL_VISIT : std_logic_vector(1 downto 0) := "11";
+ -- === Señales Internas ===
+ signal s_nivel_detectado : std_logic_vector(1 downto 0);
+ signal s_rfid_valido : std_logic;
+ signal s_acceso_permitido_calculado : std_logic;
+begin
+ -- === Lógica de Procesamiento (Proceso Síncrono) ===
+ process (clk, reset)
+ variable v_es_admin : boolean;
+ variable v_es_trab_vis : boolean;
+ variable v_cond_admin : boolean;
+ variable v_cond_trab_vis: boolean;
+ begin
+ if reset = '1' then
+ s_nivel_detectado <= RFID_NIVEL_INV;
+ s_rfid_valido <= '0';
+ s_acceso_permitido_calculado <= '0';
+ elsif rising_edge(clk) then
+ -- === 1. Comparación RFID y Determinación de Nivel ===
+ if i_rfid_tag = RFID_ADMIN_1 then
+ s_rfid_valido <= '1';
+ s_nivel_detectado <= RFID_NIVEL_ADMIN;
+ elsif i_rfid_tag = RFID_TRAB_1 then
+ s_rfid_valido <= '1';
+ s_nivel_detectado <= RFID_NIVEL_TRAB;
+ elsif i_rfid_tag = RFID_VISIT_1 then
+ s_rfid_valido <= '1';
+ s_nivel_detectado <= RFID_NIVEL_VISIT;
+ else
+ s_rfid_valido <= '0';
+s_nivel_detectado <= RFID_NIVEL_INV;
+ end if;
+ -- === 2. Lógica de Autorización Combinada ===
+ v_es_admin := (s_nivel_detectado = RFID_NIVEL_ADMIN);
+ v_es_trab_vis := (s_nivel_detectado = RFID_NIVEL_TRAB) or (s_nivel_detectado = 
+RFID_NIVEL_VISIT);
+ v_cond_admin := (s_rfid_valido = '1') and (i_qr_valido = '1') and v_es_admin;
+ v_cond_trab_vis := (s_rfid_valido = '1') and (i_qr_valido = '1') and v_es_trab_vis and 
+(i_horario_permitido = '1');
+ if v_cond_admin or v_cond_trab_vis then
+ s_acceso_permitido_calculado <= '1';
+ else
+ s_acceso_permitido_calculado <= '0';
+ end if;
+ end if; -- rising_edge(clk)
+ end process;
+ -- === Asignación Concurrente de Salidas ===
+ o_acceso_autorizado <= s_acceso_permitido_calculado;
+ o_nivel_usuario <= s_nivel_detectado;
+end architecture Behavioral;
