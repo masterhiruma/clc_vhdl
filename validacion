@@ -1,0 +1,27 @@
+*******************************************************************************
+-- Módulo: Autorizacion_Logica
+-- Descripción: Verifica el acceso basado en RFID, QR y Horario, determinando
+-- el nivel de usuario y si el acceso está autorizado.
+--
+*******************************************************************************
+library ieee;
+use ieee.std_logic_1164.all;
+entity Autorizacion_Logica is
+ port (
+ -- Entradas
+ clk : in std_logic;
+ reset : in std_logic;
+ i_rfid_tag : in std_logic_vector(31 downto 0);
+ i_qr_valido : in std_logic;
+ i_horario_permitido : in std_logic;
+ -- Salidas
+ o_acceso_autorizado : out std_logic;
+ o_nivel_usuario : out std_logic_vector(1 downto 0)
+ );
+end entity Autorizacion_Logica;
+architecture Behavioral of Autorizacion_Logica is
+ -- === Constantes para IDs RFID Autorizados ===
+ constant RFID_ADMIN_1 : std_logic_vector(31 downto 0) := x"1111AAAA";
+ constant RFID_TRAB_1 : std_logic_vector(31 downto 0) := x"2222BBBB";
+ constant RFID_VISIT_1 : std_logic_vector(31 downto 0) := x"3333CCCC";
+ constant RFID_NIVEL_INV : std_logic_vector(1 downto 0) := "00";
