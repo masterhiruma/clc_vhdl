@@ -1,0 +1,114 @@
+*******************************************************************************
+-- Testbench para: Autorizacion_Logica
+-- Descripción: Genera estímulos y verifica el comportamiento del módulo
+Autorizacion_Logica.
+--
+*******************************************************************************
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+entity tb_Autorizacion_Logica is
+ -- La entidad del testbench suele estar vacía
+end entity tb_Autorizacion_Logica;
+architecture Test of tb_Autorizacion_Logica is
+ -- === Componente Bajo Prueba (DUT - Device Under Test) ===
+ component Autorizacion_Logica is
+ port (
+ clk : in std_logic;
+ reset : in std_logic;
+ i_rfid_tag : in std_logic_vector(31 downto 0);
+ i_qr_valido : in std_logic;
+ i_horario_permitido : in std_logic;
+ o_acceso_autorizado : out std_logic;
+ o_nivel_usuario : out std_logic_vector(1 downto 0)
+ );
+ end component Autorizacion_Logica;
+ -- === Constantes de Simulación ===
+ constant CLK_PERIOD : time := 10 ns;
+ constant RFID_ADMIN_T : std_logic_vector(31 downto 0) := x"1111AAAA";
+ constant RFID_TRAB_T : std_logic_vector(31 downto 0) := x"2222BBBB";
+ constant RFID_VISIT_T : std_logic_vector(31 downto 0) := x"3333CCCC";
+ constant RFID_INVALID_T : std_logic_vector(31 downto 0) := x"00000000";
+ constant NIVEL_INV_E : std_logic_vector(1 downto 0) := "00";
+ constant NIVEL_ADMIN_E : std_logic_vector(1 downto 0) := "01";
+constant NIVEL_TRAB_E : std_logic_vector(1 downto 0) := "10";
+ constant NIVEL_VISIT_E : std_logic_vector(1 downto 0) := "11";
+ -- === Señales para conectar al DUT ===
+ signal s_clk : std_logic := '0';
+ signal s_reset : std_logic;
+ signal s_rfid_tag : std_logic_vector(31 downto 0);
+ signal s_qr_valido : std_logic;
+ signal s_horario_permitido : std_logic;
+ signal s_acceso_out : std_logic;
+ signal s_nivel_out : std_logic_vector(1 downto 0);
+begin
+ -- === Instanciación del DUT ===
+ UUT : Autorizacion_Logica
+ port map (
+ clk => s_clk,
+ reset => s_reset,
+ i_rfid_tag => s_rfid_tag,
+ i_qr_valido => s_qr_valido,
+ i_horario_permitido => s_horario_permitido,
+ o_acceso_autorizado => s_acceso_out,
+ o_nivel_usuario => s_nivel_out
+ );
+ -- === Generador de Reloj ===
+ clk_process : process begin s_clk <= '0'; wait for CLK_PERIOD / 2; s_clk <= '1'; wait for 
+CLK_PERIOD / 2; end process clk_process;
+ -- === Proceso de Estímulos ===
+ stimulus_process : process
+ begin
+ report "Inicio de la Simulación del Módulo de Autorización";
+ -- 1. Reset Inicial
+ s_reset <= '1'; s_rfid_tag <= (others => '0'); s_qr_valido <= '0'; s_horario_permitido <= '0'; 
+wait for CLK_PERIOD * 2; s_reset <= '0'; wait for CLK_PERIOD;
+assert (s_acceso_out = '0' and s_nivel_out = NIVEL_INV_E) report "Fallo: Estado post-reset 
+incorrecto." severity error;
+ -- 2. Admin Válido (QR OK)
+ report "Caso 2: Admin Valido, QR OK"; s_rfid_tag <= RFID_ADMIN_T; s_qr_valido <= '1'; 
+s_horario_permitido <= '0'; wait for CLK_PERIOD * 2;
+ assert (s_acceso_out = '1' and s_nivel_out = NIVEL_ADMIN_E) report "Fallo: Caso Admin 
+Valido, QR OK" severity error;
+ -- 3. Trabajador Válido (QR OK, Horario OK)
+ report "Caso 3: Trabajador Valido, QR OK, Horario OK"; s_rfid_tag <= RFID_TRAB_T; 
+s_qr_valido <= '1'; s_horario_permitido <= '1'; wait for CLK_PERIOD * 2;
+ assert (s_acceso_out = '1' and s_nivel_out = NIVEL_TRAB_E) report "Fallo: Caso Trabajador 
+Valido, QR OK, Horario OK" severity error;
+ -- 4. Trabajador Válido (QR OK, Horario NO OK)
+ report "Caso 4: Trabajador Valido, QR OK, Horario NO OK"; s_rfid_tag <= RFID_TRAB_T; 
+s_qr_valido <= '1'; s_horario_permitido <= '0'; wait for CLK_PERIOD * 2;
+ assert (s_acceso_out = '0' and s_nivel_out = NIVEL_TRAB_E) report "Fallo: Caso Trabajador 
+Valido, QR OK, Horario NO OK" severity error;
+ -- 5. Visitante Válido (QR OK, Horario OK)
+ report "Caso 5: Visitante Valido, QR OK, Horario OK"; s_rfid_tag <= RFID_VISIT_T; 
+s_qr_valido <= '1'; s_horario_permitido <= '1'; wait for CLK_PERIOD * 2;
+ assert (s_acceso_out = '1' and s_nivel_out = NIVEL_VISIT_E) report "Fallo: Caso Visitante 
+Valido, QR OK, Horario OK" severity error;
+ -- 6. Visitante Válido (QR OK, Horario NO OK)
+ report "Caso 6: Visitante Valido, QR OK, Horario NO OK"; s_rfid_tag <= RFID_VISIT_T; 
+s_qr_valido <= '1'; s_horario_permitido <= '0'; wait for CLK_PERIOD * 2;
+ assert (s_acceso_out = '0' and s_nivel_out = NIVEL_VISIT_E) report "Fallo: Caso Visitante 
+Valido, QR OK, Horario NO OK" severity error;
+ -- 7. RFID Válido (Admin) pero QR Inválido
+ report "Caso 7: Admin Valido, QR Invalido"; s_rfid_tag <= RFID_ADMIN_T; s_qr_valido <= 
+'0'; s_horario_permitido <= '1'; wait for CLK_PERIOD * 2;
+ assert (s_acceso_out = '0' and s_nivel_out = NIVEL_ADMIN_E) report "Fallo: Caso Admin 
+Valido, QR Invalido" severity error;
+ -- 8. RFID Inválido pero QR Válido
+ report "Caso 8: RFID Invalido, QR Valido"; s_rfid_tag <= RFID_INVALID_T; s_qr_valido <= 
+'1'; s_horario_permitido <= '1'; wait for CLK_PERIOD * 2;
+assert (s_acceso_out = '0' and s_nivel_out = NIVEL_INV_E) report "Fallo: Caso RFID 
+Invalido, QR Valido" severity error;
+ -- 9. Cambios mientras RFID es válido (Trabajador)
+ report "Caso 9: Transiciones con Trabajador Valido"; s_rfid_tag <= RFID_TRAB_T; 
+s_qr_valido <= '1'; s_horario_permitido <= '1'; wait for CLK_PERIOD * 2; assert (s_acceso_out = 
+'1' and s_nivel_out = NIVEL_TRAB_E) report "Fallo: Caso 9a" severity error;
+ s_horario_permitido <= '0'; wait for CLK_PERIOD * 2; assert (s_acceso_out = '0' and 
+s_nivel_out = NIVEL_TRAB_E) report "Fallo: Caso 9b" severity error;
+ s_qr_valido <= '0'; wait for CLK_PERIOD * 2; assert (s_acceso_out = '0' and s_nivel_out = 
+NIVEL_TRAB_E) report "Fallo: Caso 9c" severity error;
+ report "Fin de la Simulación.";
+ wait;
+ end process stimulus_process;
+end architecture Test;
