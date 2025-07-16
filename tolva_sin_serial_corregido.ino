@@ -1,32 +1,29 @@
 /*
- *  DISPENSADOR AUTOMÁTICO - VERSIÓN MULTITAREA CONCURRENTE
- *  VERSIÓN AUTÓNOMA (SIN MONITOR SERIAL) - CON DEBOUNCE
+ *  DISPENSADOR AUTOMÁTICO - VERSIÓN SIN SERIAL.PRINT()
+ *  PROBLEMA SOLUCIONADO: Timing corregido tras quitar Serial.print()
  *
- *  Lógica de funcionamiento:
- *  - El sensor y el motor funcionan en paralelo sin interrumpirse.
+ *  EXPLICACIÓN DEL PROBLEMA:
+ *  Los Serial.print() introducían micro-delays que el sensor necesitaba.
+ *  Al quitarlos, el código corre demasiado rápido y el timing falla.
  *
- *  1. Al encender, espera 10 segundos.
- *  2. Al terminar la espera, se dispara el CICLO DE MOTOR INICIAL.
- *  3. SIMULTÁNEAMENTE, el sensor comienza a monitorear y contar.
- *  4. El conteo del sensor NUNCA se detiene.
- *  5. Cada 2 pasadas de objeto, el contador principal suma 1.
- *  6. Cuando el contador llega a 30, se dispara la secuencia del motor.
- *  7. El sistema es cíclico e ininterrumpido.
- *
- *  ADVERTENCIA: Este circuito maneja ALTO VOLTAJE. Proceda con MÁXIMA PRECAUCIÓN.
+ *  SOLUCIÓN APLICADA:
+ *  - Debounce aumentado significativamente
+ *  - Delay no bloqueante después de detección
+ *  - Timing ajustado para compensar velocidad extra
  */
 
 // --- Pines ---
 const int pinSensor = 2;
 const int pinControlMotor = 3;
 
-// --- Parámetros de Configuración ---
+// --- Parámetros de Configuración AJUSTADOS ---
 const int PULSOS_OBJETIVO = 30;
 const int NUMERO_DE_PULSOS_MOTOR = 6;
 const int TIEMPO_ENCENDIDO_MS = 120;
 const int TIEMPO_APAGADO_MS = 900; 
 const long RETARDO_INICIAL_MS = 10000;
-const unsigned long TIEMPO_DEBOUNCE_MS = 100; // Aumentado para compensar la falta de Serial.print() // Tiempo para estabilizar la señal del sensor
+const unsigned long TIEMPO_DEBOUNCE_MS = 150; // AUMENTADO: antes era 20ms
+const unsigned long DELAY_POST_DETECCION_MS = 50; // NUEVO: delay tras detectar objeto
 
 // --- Variables de Estado y Banderas de Control ---
 bool sistemaActivo = false;
@@ -36,9 +33,10 @@ bool secuenciaEnMarcha = false;
 int pasosDetectados = 0;
 int conteoPrincipal = 0;
 // Variables para el Debounce del sensor
-int estadoSensorEstable = HIGH;     // Estado estable y confirmado del sensor
-int ultimoEstadoLeido = HIGH;       // Última lectura instantánea del sensor
-unsigned long tiempoUltimoCambio = 0; // Momento en que se detectó un cambio por última vez
+int estadoSensorEstable = HIGH;
+int ultimoEstadoLeido = HIGH;
+unsigned long tiempoUltimoCambio = 0;
+unsigned long tiempoUltimaDeteccion = 0; // NUEVO: para delay post-detección
 
 // --- Variables para el Motor ---
 unsigned long tiempoAnteriorMotor = 0;
@@ -46,7 +44,7 @@ int pulsoMotorActual = 0;
 
 // --- FUNCIÓN DE CONFIGURACIÓN ---
 void setup() {
-  pinMode(pinSensor, INPUT_PULLUP); // Usar INPUT_PULLUP es más robusto si el sensor es de contacto seco
+  pinMode(pinSensor, INPUT_PULLUP);
   pinMode(pinControlMotor, OUTPUT);
   digitalWrite(pinControlMotor, LOW);
   
@@ -55,7 +53,7 @@ void setup() {
   estadoSensorEstable = ultimoEstadoLeido;
 }
 
-// --- BUCLE PRINCIPAL (ACTÚA COMO DESPACHADOR) ---
+// --- BUCLE PRINCIPAL ---
 void loop() {
   // --- TAREA 0: GESTIÓN DEL ARRANQUE INICIAL ---
   if (!sistemaActivo) {
@@ -64,7 +62,7 @@ void loop() {
       secuenciaEnMarcha = true;
       iniciarSecuenciaMotor();
     }
-    return; // No hacer nada más hasta que termine el retardo
+    return;
   }
 
   // --- TAREAS CONCURRENTES ---
@@ -75,30 +73,30 @@ void loop() {
 // --- FUNCIONES AUXILIARES ---
 
 void gestionarSensor() {
-  // 1. Leer el estado actual del pin del sensor
+  // 1. Verificar si aún estamos en período de "silencio" post-detección
+  if (millis() - tiempoUltimaDeteccion < DELAY_POST_DETECCION_MS) {
+    return; // No procesar sensor durante este tiempo
+  }
+
+  // 2. Leer el estado actual del pin del sensor
   int lecturaActual = digitalRead(pinSensor);
 
-  // 2. Comprobar si la lectura ha cambiado respecto a la última vez
+  // 3. Comprobar si la lectura ha cambiado respecto a la última vez
   if (lecturaActual != ultimoEstadoLeido) {
-    // Si cambió, reiniciar el contador de tiempo para el debounce
     tiempoUltimoCambio = millis();
   }
   
-  // Guardamos la lectura actual para la próxima iteración del loop
   ultimoEstadoLeido = lecturaActual;
 
-  // 3. Comprobar si ha pasado suficiente tiempo desde el último cambio
+  // 4. Comprobar si ha pasado suficiente tiempo desde el último cambio
   if ((millis() - tiempoUltimoCambio) > TIEMPO_DEBOUNCE_MS) {
-    // Si el tiempo ha pasado, la señal es estable.
-    // Comprobamos si el estado estable es diferente del que teníamos guardado.
     if (lecturaActual != estadoSensorEstable) {
-      estadoSensorEstable = lecturaActual; // Actualizamos el estado estable
+      estadoSensorEstable = lecturaActual;
 
-      // 4. Actuar solo en el FLANCO DE SUBIDA (cuando el objeto se va)
-      // Es decir, cuando el estado estable cambia de LOW a HIGH
+      // 5. Actuar en el FLANCO DE SUBIDA (cuando el objeto se va)
       if (estadoSensorEstable == HIGH) {
         pasosDetectados++;
-        delay(10); // Delay para reemplazar el que hacían los Serial.print()
+        tiempoUltimaDeteccion = millis(); // Iniciar período de silencio
 
         // La lógica de conteo principal se mantiene igual
         if (pasosDetectados > 0 && pasosDetectados % 2 == 0) {
@@ -116,7 +114,6 @@ void gestionarSensor() {
     }
   }
 }
-
 
 void iniciarSecuenciaMotor() {
   pulsoMotorActual = 1;
