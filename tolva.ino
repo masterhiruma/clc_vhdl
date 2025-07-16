@@ -26,11 +26,15 @@ const int NUMERO_DE_PULSOS_MOTOR = 6;
 const int TIEMPO_ENCENDIDO_MS = 120;
 const int TIEMPO_APAGADO_MS = 900; 
 const long RETARDO_INICIAL_MS = 10000;
-const unsigned long TIEMPO_DEBOUNCE_MS = 20; // Tiempo para estabilizar la señal del sensor
+const unsigned long TIEMPO_DEBOUNCE_MS = 50; // Incrementado de 20 a 50ms
 
 // --- Variables de Estado y Banderas de Control ---
 bool sistemaActivo = false;
 bool secuenciaEnMarcha = false;
+
+// --- Variables para el arranque ---
+unsigned long tiempoInicioSistema = 0;
+bool inicioRegistrado = false;
 
 // --- Variables para el Sensor ---
 int pasosDetectados = 0;
@@ -53,13 +57,17 @@ void setup() {
   // Leemos el estado inicial para evitar un falso trigger al arrancar
   ultimoEstadoLeido = digitalRead(pinSensor);
   estadoSensorEstable = ultimoEstadoLeido;
+  
+  // Registrar tiempo de inicio
+  tiempoInicioSistema = millis();
+  inicioRegistrado = true;
 }
 
 // --- BUCLE PRINCIPAL (ACTÚA COMO DESPACHADOR) ---
 void loop() {
   // --- TAREA 0: GESTIÓN DEL ARRANQUE INICIAL ---
-  if (!sistemaActivo) {
-    if (millis() >= RETARDO_INICIAL_MS) {
+  if (!sistemaActivo && inicioRegistrado) {
+    if ((unsigned long)(millis() - tiempoInicioSistema) >= RETARDO_INICIAL_MS) {
       sistemaActivo = true;
       secuenciaEnMarcha = true;
       iniciarSecuenciaMotor();
@@ -70,6 +78,10 @@ void loop() {
   // --- TAREAS CONCURRENTES ---
   gestionarSensor();
   gestionarSecuenciaMotor();
+  
+  // CRÍTICO: Pequeño delay para estabilizar el timing del sensor
+  // Esto reemplaza el delay que introducían los Serial.print()
+  delay(1);
 }
 
 // --- FUNCIONES AUXILIARES ---
@@ -88,7 +100,7 @@ void gestionarSensor() {
   ultimoEstadoLeido = lecturaActual;
 
   // 3. Comprobar si ha pasado suficiente tiempo desde el último cambio
-  if ((millis() - tiempoUltimoCambio) > TIEMPO_DEBOUNCE_MS) {
+  if ((unsigned long)(millis() - tiempoUltimoCambio) > TIEMPO_DEBOUNCE_MS) {
     // Si el tiempo ha pasado, la señal es estable.
     // Comprobamos si el estado estable es diferente del que teníamos guardado.
     if (lecturaActual != estadoSensorEstable) {
@@ -129,12 +141,12 @@ void gestionarSecuenciaMotor() {
   }
 
   if (digitalRead(pinControlMotor) == HIGH) {
-    if (millis() - tiempoAnteriorMotor >= TIEMPO_ENCENDIDO_MS) {
+    if ((unsigned long)(millis() - tiempoAnteriorMotor) >= TIEMPO_ENCENDIDO_MS) {
       digitalWrite(pinControlMotor, LOW);
       tiempoAnteriorMotor = millis();
     }
   } else {
-    if (millis() - tiempoAnteriorMotor >= TIEMPO_APAGADO_MS) {
+    if ((unsigned long)(millis() - tiempoAnteriorMotor) >= TIEMPO_APAGADO_MS) {
       if (pulsoMotorActual < NUMERO_DE_PULSOS_MOTOR) {
         pulsoMotorActual++;
         digitalWrite(pinControlMotor, HIGH);
